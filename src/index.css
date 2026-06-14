@@ -1,0 +1,14 @@
+/* Clean Reset for Fullscreen WebGL Experience */
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  background-color: #020008; /* Fallback dark space background */
+  color: #f3f0fa;
+}
+
+* {
+  box-sizing: border-box;
+}

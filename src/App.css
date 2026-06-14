@@ -1,0 +1,269 @@
+/* CSS Design System for Algoryx Cosmic Particle Dragon Experience */
+
+:root {
+  --color-bg: #020008;
+  --color-text: #f3f0fa;
+  --color-primary: #00f5ff; /* Galaxy Cyan */
+  --color-secondary: #ff007f; /* Plasma Magenta */
+  --color-indigo: #0a043c;
+  --font-display: 'Cinzel', serif;
+  --font-sans: 'Outfit', sans-serif;
+  --glass-bg: rgba(6, 3, 20, 0.55);
+  --glass-border: rgba(0, 245, 255, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  scrollbar-width: none; /* Hide scrollbars */
+  -webkit-font-smoothing: antialiased;
+}
+
+body::-webkit-scrollbar {
+  display: none; /* Hide scrollbar for Chrome/Safari */
+}
+
+/* Fixed fullscreen Canvas container */
+.canvas-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none; /* R3F hooks into its own element, but background should let clicks through if necessary */
+}
+
+/* Scroll wrapper */
+.scroll-container {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+}
+
+/* Fullscreen Section Panels */
+.scroll-section {
+  position: relative;
+  height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 8%;
+  padding-right: 8%;
+  pointer-events: none; /* Let pointer pass to R3F except for panels */
+}
+
+/* Last section should allow interactions, etc. */
+.scroll-section:last-child {
+  justify-content: center;
+  padding-left: 0;
+}
+
+/* Left-aligned cinematic text panels */
+.content-panel {
+  pointer-events: auto; /* Active clicking allowed */
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 2.5rem 3rem;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 
+              inset 0 0 15px rgba(0, 245, 255, 0.05);
+  opacity: 0;
+  transform: translateY(30px);
+  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Glowing side accent line for panels */
+.content-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(to bottom, var(--color-primary), var(--color-secondary));
+}
+
+.content-panel.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Typography details */
+.stage-number {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: var(--color-primary);
+  letter-spacing: 4px;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(0, 245, 255, 0.4);
+}
+
+.stage-title {
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #ffffff 30%, rgba(243, 240, 250, 0.7));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1.2;
+}
+
+.stage-desc {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: rgba(243, 240, 250, 0.85);
+  font-weight: 300;
+  letter-spacing: 0.5px;
+}
+
+/* Floating Scroll Down Indicator */
+.scroll-indicator {
+  position: fixed;
+  bottom: 2.5rem;
+  right: 3.5rem;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.75rem;
+  color: rgba(243, 240, 250, 0.6);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  font-weight: 400;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.scroll-indicator-mouse {
+  width: 20px;
+  height: 35px;
+  border: 2px solid rgba(243, 240, 250, 0.4);
+  border-radius: 10px;
+  margin-bottom: 0.5rem;
+  position: relative;
+}
+
+.scroll-indicator-wheel {
+  width: 4px;
+  height: 8px;
+  background-color: var(--color-primary);
+  border-radius: 2px;
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: scrollWheelAnim 2s infinite ease-in-out;
+}
+
+@keyframes scrollWheelAnim {
+  0% {
+    top: 6px;
+    opacity: 1;
+  }
+  50% {
+    top: 18px;
+    opacity: 0;
+  }
+  100% {
+    top: 6px;
+    opacity: 1;
+  }
+}
+
+/* Header branding overlay */
+.brand-header {
+  position: fixed;
+  top: 2.5rem;
+  left: 3.5rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% - 7rem);
+  pointer-events: none;
+}
+
+.brand-logo {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: #ffffff;
+  pointer-events: auto;
+  text-decoration: none;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+}
+
+.brand-tech {
+  font-size: 0.75rem;
+  color: rgba(243, 240, 250, 0.5);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* Interactive Sound/Audio Button */
+.audio-control {
+  pointer-events: auto;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(243, 240, 250, 0.8);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.audio-control:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  box-shadow: 0 0 10px rgba(0, 245, 255, 0.15);
+}
+
+/* Screen responsive scaling */
+@media (max-width: 768px) {
+  .brand-header {
+    top: 1.5rem;
+    left: 1.5rem;
+    width: calc(100% - 3rem);
+  }
+  .scroll-section {
+    padding-left: 5%;
+    padding-right: 5%;
+    justify-content: center;
+  }
+  .content-panel {
+    padding: 2rem;
+    max-width: 100%;
+  }
+  .scroll-indicator {
+    display: none; /* Hide indicator on mobile */
+  }
+}
