@@ -268,7 +268,7 @@ export const particleVertexShader = `
     // 8. ADAPTIVE PARTICLE SIZE CALCULATION
     // Scale particle size based on type, distance from camera, resolution, and pixel ratio
     float typeSizeMultiplier = 1.0;
-    if (vType == 6.0) typeSizeMultiplier = 2.5; // Eyes are larger/brighter
+    if (vType == 6.0) typeSizeMultiplier = 1.5; // Eyes are larger/brighter (reduced from 2.5)
     if (vType == 3.0) typeSizeMultiplier = 0.7; // Whiskers are finer lines
     if (vType == 2.0) typeSizeMultiplier = 1.2; // Horns are chunkier
 

@@ -1,4 +1,4 @@
-// Structured High-Definition Dragon Particle Generator for Algoryx
+// Highly Detailed Volumetric Structured Procedural Dragon Particle Generator for Algoryx
 
 export interface CosmicParticlesData {
   positions: Float32Array;
@@ -97,46 +97,84 @@ function sampleLetter(letterChar: string, cx: number): Point2D {
   }
 }
 
+// 3D Serpentine spine coiling path coordinates
+const bodyLength = 32.0;
+
+export const getSpinePoint = (t: number) => {
+  const pz = t * bodyLength;
+  // Serpentine S-curves
+  const px = Math.sin(t * Math.PI * 2.2) * 3.5 * (1.0 - t * 0.4);
+  const py = Math.cos(t * Math.PI * 1.5) * 4.5 - t * 3.0;
+  return { x: px, y: py, z: pz };
+};
+
+// Computes local coordinate frame along the spine (Frenet-Serret frame)
+export const getSpineFrame = (t: number) => {
+  const spine = getSpinePoint(t);
+  const dt = 0.001;
+  const p1 = getSpinePoint(Math.max(0, t - dt));
+  const p2 = getSpinePoint(Math.min(1, t + dt));
+  
+  const tx = p2.x - p1.x;
+  const ty = p2.y - p1.y;
+  const tz = p2.z - p1.z;
+  const len = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1.0;
+  const tangent = { x: tx / len, y: ty / len, z: tz / len };
+
+  // Set default up vector
+  let upX = 0.0, upY = 1.0, upZ = 0.0;
+  // If tangent points nearly along Y, use X as up vector to avoid singularity
+  const dot = tangent.x * upX + tangent.y * upY + tangent.z * upZ;
+  if (Math.abs(dot) > 0.95) {
+    upX = 1.0; upY = 0.0; upZ = 0.0;
+  }
+
+  // normal = tangent x up
+  const nx = tangent.y * upZ - tangent.z * upY;
+  const ny = tangent.z * upX - tangent.x * upZ;
+  const nz = tangent.x * upY - tangent.y * upX;
+  const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1.0;
+  const normal = { x: nx / nLen, y: ny / nLen, z: nz / nLen };
+
+  // binormal = tangent x normal
+  const bx = tangent.y * normal.z - tangent.z * normal.y;
+  const by = tangent.z * normal.x - tangent.x * normal.z;
+  const bz = tangent.x * normal.y - tangent.y * normal.x;
+  const binormal = { x: bx, y: by, z: bz };
+
+  return { origin: spine, tangent, normal, binormal };
+};
+
 export function generateCosmicDragonParticles(count: number): CosmicParticlesData {
   const positions = new Float32Array(count * 3);
   const targetPositions = new Float32Array(count * 3);
   const logoPositions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
-  const randoms = new Float32Array(count * 4); // x: speed, y: size, z: progress along path, w: type
+  const randoms = new Float32Array(count * 4); // x: speed, y: size, z: progress, w: type
   const velocities = new Float32Array(count * 3);
   const extras = new Float32Array(count * 3); // x: energyLevel, y: noiseSeed, z: glowStrength
 
-  // Color Palettes
+  // Color Palettes (Soften starlight white slightly)
   const colorsList = {
     deepIndigo: [0.03, 0.01, 0.32],
     nebulaPurple: [0.35, 0.05, 0.5],
     plasmaMagenta: [0.95, 0.02, 0.45],
     electricBlue: [0.0, 0.72, 1.0],
     galaxyCyan: [0.0, 0.98, 0.92],
-    starlightWhite: [1.0, 1.0, 1.0],
+    starlightWhite: [0.88, 0.88, 0.93], // Softer cool white
     supernovaPink: [1.0, 0.1, 0.6],
   };
 
-  // Define particle segments for complete anatomy:
-  // Types (aRandom.w):
-  // 0: Body (Serpentine strands + core)
-  // 1: Head (Crown horn tines, Jaws, Snout profile, teeth/fangs)
-  // 2: Horns (Branching structures)
-  // 3: Whiskers (Snout flowing whiskers)
-  // 4: Back Scales (Glowing triangular dorsal fin comb)
-  // 5: Tail (Expanding plume)
-  // 6: Eyes (Glowing core spheres)
-  // 7: Legs & Claws (4 legs, each with 4 sharp claws)
-
-  const ratioEyes = 0.015;
-  const ratioHorns = 0.08;
-  const ratioWhiskers = 0.06;
-  const ratioBackScales = 0.11; // Triangular back comb
-  const ratioLegs = 0.12;       // 4 legs and sharp claws
-  const ratioWings = 0.16;      // Wings
-  const ratioTail = 0.10;
-  const ratioHead = 0.12;       // Muzzle, jaws, and sharp fangs
-  // Body takes remaining (~23.5%)
+  // Anatomy particle ratios:
+  const ratioEyes = 0.012;
+  const ratioHorns = 0.065;
+  const ratioWhiskers = 0.045;
+  const ratioBackScales = 0.13; // Triangular fin ridges
+  const ratioLegs = 0.16;       // 4 thick limbs & fangs
+  const ratioWings = 0.19;      // Volumetric bat-like cosmic wings
+  const ratioTail = 0.11;       // Detailed tail plume ribbons
+  const ratioHead = 0.14;       // Highly detailed skull, jaws, snout, beard
+  // Body takes remaining (~14.8%)
 
   const countEyes = Math.floor(count * ratioEyes);
   const countHead = Math.floor(count * ratioHead);
@@ -155,7 +193,7 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
     let glow = 0.5;
     let progress = Math.random();
 
-    // Assign type category
+    // Assign categories
     if (i < countEyes) {
       type = 6;
     } else if (i < countEyes + countHead) {
@@ -169,14 +207,14 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
     } else if (i < countEyes + countHead + countHorns + countWhiskers + countBackScales + countLegs) {
       type = 7;
     } else if (i < countEyes + countHead + countHorns + countWhiskers + countBackScales + countLegs + countWings) {
-      type = 8; // Wings
+      type = 8;
     } else if (i < countEyes + countHead + countHorns + countWhiskers + countBackScales + countLegs + countWings + countTail) {
       type = 5;
     } else {
       type = 0;
     }
 
-    // 1. GENERATE SCATTERED INITIAL GALAXY POSITIONS
+    // 1. GALAXY INITIAL STATE
     const galRadius = 14.0 + Math.random() * 36.0;
     const numArms = 3;
     const armAngle = (Math.floor(Math.random() * numArms) * (2 * Math.PI)) / numArms;
@@ -195,38 +233,38 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
     velocities[i * 3 + 1] = 0.0;
     velocities[i * 3 + 2] = px * orbSpeed;
 
-    // 2. GENERATE DRAGON SHAPE (Accurate Eastern Serpentine Dragon with limbs and back plates)
-    const bodyLength = 32.0;
-
+    // 2. CELESTIAL DRAGON TARGET GEOMETRY
     if (type === 0) {
-      // --- BODY (Serpentine strands + internal core) ---
-      const isCore = Math.random() < 0.3;
+      // --- BODY (Volumetric Serpentine Muscle Tube) ---
       const t = Math.random();
       progress = t;
-      const pzSpine = t * bodyLength;
       
-      const spineX = Math.sin(pzSpine * 0.25) * 1.8;
-      const spineY = Math.cos(pzSpine * 0.16) * 1.2;
-      const radius = 1.5 * (1.0 - t * 0.93);
-
+      const frame = getSpineFrame(t);
+      const baseRadius = 1.62 * (1.0 - t * 0.82); // Tapering down towards the tail
+      // Create scales ridges texture
+      const scaleRipple = 1.0 + 0.08 * Math.cos(t * 110.0);
+      const radius = baseRadius * scaleRipple;
+      
+      const isCore = Math.random() < 0.26;
       if (isCore) {
-        const pt = randomInSphere(radius * 0.22);
-        rX = spineX + pt.x;
-        rY = spineY + pt.y;
-        rZ = pzSpine;
-        col = colorsList.galaxyCyan.map((c, idx) => c * 0.5 + colorsList.starlightWhite[idx] * 0.5);
+        // Core plasma strand
+        const theta = Math.random() * 2 * Math.PI;
+        const rad = Math.sqrt(Math.random()) * radius * 0.22;
+        rX = frame.origin.x + (frame.normal.x * Math.cos(theta) + frame.binormal.x * Math.sin(theta)) * rad;
+        rY = frame.origin.y + (frame.normal.y * Math.cos(theta) + frame.binormal.y * Math.sin(theta)) * rad;
+        rZ = frame.origin.z + (frame.normal.z * Math.cos(theta) + frame.binormal.z * Math.sin(theta)) * rad;
+        col = colorsList.galaxyCyan.map((c, idx) => c * 0.4 + colorsList.starlightWhite[idx] * 0.6);
         energy = 1.0;
-        glow = 0.85;
+        glow = 0.95;
       } else {
-        const numStrands = 6;
-        const strandId = Math.floor(Math.random() * numStrands);
-        const strandAngle = (strandId / numStrands) * 2 * Math.PI + t * 9.0;
-        const thickness = radius * 0.12;
-        const pt = randomInSphere(thickness);
-
-        rX = spineX + Math.cos(strandAngle) * radius + pt.x;
-        rY = spineY + Math.sin(strandAngle) * radius + pt.y;
-        rZ = pzSpine + pt.z * 0.2;
+        // Volumetric body muscle shell
+        const theta = Math.random() * 2 * Math.PI;
+        // Concentrate on surface for volumetric shell look
+        const rad = (Math.random() < 0.68 ? (0.86 + Math.random() * 0.14) : Math.sqrt(Math.random())) * radius;
+        
+        rX = frame.origin.x + (frame.normal.x * Math.cos(theta) + frame.binormal.x * Math.sin(theta)) * rad;
+        rY = frame.origin.y + (frame.normal.y * Math.cos(theta) + frame.binormal.y * Math.sin(theta)) * rad;
+        rZ = frame.origin.z + (frame.normal.z * Math.cos(theta) + frame.binormal.z * Math.sin(theta)) * rad;
 
         if (t < 0.2) {
           const f = t / 0.2;
@@ -243,213 +281,347 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
       }
 
     } else if (type === 1) {
-      // --- HEAD (Jaws, snout profile, fangs) ---
-      const hz = -Math.random() * 3.2; // snout length
-      const t = Math.abs(hz) / 3.2; // progress along snout
-      progress = t;
-      
-      const featureType = Math.random();
-      
-      if (featureType < 0.18) {
-        // Sharp fangs (Upper and Lower) - straight lines
-        const side = Math.random() > 0.5 ? 1 : -1;
-        const isUpper = Math.random() > 0.5;
-        // Upper fangs point down, lower fangs point up
-        const fangStart: [number, number, number] = [side * 0.36, isUpper ? 0.15 : -0.2, -2.4];
-        const fangEnd: [number, number, number] = [side * 0.36, isUpper ? -0.3 : 0.05, -2.4];
-        
-        const pt = sampleLine(fangStart, fangEnd, 0.01);
-        rX = pt.x;
-        rY = pt.y;
-        rZ = pt.z;
-        col = colorsList.starlightWhite; // sharp white teeth
-        glow = 1.0;
-        energy = 1.0;
-      } else if (featureType < 0.45) {
-        // Upper snout profile line (sharp edge)
-        const pt = randomInSphere(0.04);
-        rX = pt.x;
-        rY = 0.36 + (1.0 - t) * 0.35 + pt.y; // tapers down to nose
-        rZ = hz;
-        col = colorsList.galaxyCyan;
-        glow = 0.8;
-      } else if (featureType < 0.65) {
-        // Lower jaw line
-        const pt = randomInSphere(0.04);
-        rX = pt.x;
-        rY = -0.35 + t * 0.12 + pt.y;
-        rZ = hz;
+      // --- CINEMATIC HEAD & FACE ---
+      // Extracted from countHead. Break down into detailed volumetric components
+      const spine = getSpinePoint(0.0);
+      const headComponent = Math.random();
+
+      if (headComponent < 0.35) {
+        // 1. Skull / Braincase (Volumetric Ellipsoid centered at upper back head)
+        const theta = Math.random() * 2.0 * Math.PI;
+        const phi = Math.acos(Math.random() * 2.0 - 1.0);
+        const r = Math.cbrt(Math.random());
+        rX = spine.x + r * Math.sin(phi) * Math.cos(theta) * 0.72;
+        rY = spine.y + 0.32 + r * Math.sin(phi) * Math.sin(theta) * 0.66;
+        rZ = spine.z - 0.38 + r * Math.cos(phi) * 0.85;
+        col = colorsList.electricBlue.map((c, idx) => c * 0.72 + colorsList.nebulaPurple[idx] * 0.28);
+        progress = 0.0;
+        energy = 0.7;
+        glow = 0.6;
+      } else if (headComponent < 0.60) {
+        // 2. Muzzle / Snout (Upper Jaw - tapering box extending forward)
+        const hz = -0.75 - Math.random() * 2.45; // Z in [-3.2, -0.75]
+        const t = (hz - (-0.75)) / -2.45;
+        const w = 0.52 * (1.0 - t * 0.3); // half width
+        const h = 0.36 * (1.0 - t * 0.35); // half height
+        const theta = Math.random() * 2.0 * Math.PI;
+        const r = Math.sqrt(Math.random());
+        rX = spine.x + Math.cos(theta) * w * r;
+        rY = spine.y + 0.16 + Math.sin(theta) * h * r;
+        rZ = spine.z + hz;
         col = colorsList.electricBlue;
+        progress = Math.abs(hz) / 3.2;
+        energy = 0.8;
+        glow = 0.7;
+      } else if (headComponent < 0.75) {
+        // 3. Lower Jaw (Tapering box angled slightly downward for open mouth posture)
+        const hz = -0.75 - Math.random() * 2.05; // Z in [-2.8, -0.75]
+        const t = (hz - (-0.75)) / -2.05;
+        const w = 0.44 * (1.0 - t * 0.3);
+        const h = 0.22 * (1.0 - t * 0.35);
+        const theta = Math.random() * 2.0 * Math.PI;
+        const r = Math.sqrt(Math.random());
+        rX = spine.x + Math.cos(theta) * w * r;
+        rY = spine.y - 0.24 - 0.35 * t + Math.sin(theta) * h * r; // tilts downward
+        rZ = spine.z + hz;
+        col = colorsList.electricBlue.map((c, idx) => c * 0.8 + colorsList.deepIndigo[idx] * 0.2);
+        progress = Math.abs(hz) / 3.2;
+        energy = 0.75;
+        glow = 0.65;
+      } else if (headComponent < 0.81) {
+        // 4. Sharp Teeth & Fangs (Starlight White)
+        const toothId = Math.random();
+        col = colorsList.starlightWhite;
+        energy = 1.0;
+        glow = 1.0;
+        progress = 0.02;
+
+        if (toothId < 0.32) {
+          // Large main fangs (2 upper pointing down, 2 lower pointing up)
+          const side = Math.random() > 0.5 ? 1 : -1;
+          const isUpper = Math.random() > 0.5;
+          const fangBase: [number, number, number] = [
+            spine.x + side * 0.42,
+            spine.y + (isUpper ? 0.18 : -0.45),
+            spine.z - (isUpper ? 2.5 : 2.2)
+          ];
+          const fangTip: [number, number, number] = [
+            spine.x + side * 0.42,
+            spine.y + (isUpper ? -0.36 : 0.05),
+            spine.z - (isUpper ? 2.5 : 2.2)
+          ];
+          const pt = sampleLine(fangBase, fangTip, 0.008);
+          rX = pt.x; rY = pt.y; rZ = pt.z;
+        } else {
+          // Small teeth row along jaws
+          const side = Math.random() > 0.5 ? 1 : -1;
+          const isUpper = Math.random() > 0.5;
+          const zPos = -0.9 - Math.random() * 1.4; // along jaw
+          const tVal = (zPos - (-0.9)) / -1.4;
+          
+          let ty = spine.y;
+          let tx = spine.x + side * 0.48 * (1.0 - tVal * 0.3);
+          
+          if (isUpper) {
+            ty += 0.06;
+          } else {
+            ty += -0.25 - 0.32 * tVal;
+          }
+          
+          const toothBase: [number, number, number] = [tx, ty, spine.z + zPos];
+          const toothTip: [number, number, number] = [tx, ty + (isUpper ? -0.15 : 0.15), spine.z + zPos];
+          const pt = sampleLine(toothBase, toothTip, 0.005);
+          rX = pt.x; rY = pt.y; rZ = pt.z;
+        }
+      } else if (headComponent < 0.91) {
+        // 5. Chin Beard (Flowing filaments from bottom of lower jaw going backward)
+        const bProg = Math.random();
+        progress = bProg;
+        const bxBase = spine.x + (Math.random() - 0.5) * 0.42;
+        const byBase = spine.y - 0.45;
+        const bzBase = spine.z - 1.2 - Math.random() * 1.5;
+        
+        rX = bxBase + (Math.random() - 0.5) * 0.25 * bProg;
+        rY = byBase - 1.7 * bProg + Math.sin(bProg * 3.0) * 0.18;
+        rZ = bzBase + 2.4 * bProg; // trails backward
+        col = colorsList.galaxyCyan;
+        energy = 0.95;
+        glow = 0.85;
       } else {
-        // Skull & Cheek structures
-        const pt = randomInSphere(1.0);
-        rX = pt.x * 0.5 * (1.0 - t * 0.4);
-        rY = pt.y * 0.45 * (1.0 - t * 0.4) + 0.05;
-        rZ = hz;
-        col = colorsList.electricBlue.map((c, idx) => c * 0.6 + colorsList.nebulaPurple[idx] * 0.4);
+        // 6. Side Mane & Eyebrows (Fiery highlights around skull cheeks & brows)
+        const side = Math.random() > 0.5 ? 1 : -1;
+        const isBrow = Math.random() > 0.5;
+        const fProg = Math.random();
+        progress = fProg;
+
+        if (isBrow) {
+          // Fiery eyebrows arches above eyes
+          const bAngle = 0.2 + fProg * 1.1; // arc
+          rX = spine.x + side * (0.32 + Math.sin(bAngle) * 0.35);
+          rY = spine.y + 0.55 + Math.cos(bAngle) * 0.35;
+          rZ = spine.z - 1.5 - fProg * 0.6;
+          col = colorsList.supernovaPink;
+        } else {
+          // Cheek side mane flowing back
+          rX = spine.x + side * (0.64 + 0.9 * fProg * fProg) + (Math.random() - 0.5) * 0.12;
+          rY = spine.y + 0.18 - 0.55 * fProg + (Math.random() - 0.5) * 0.12;
+          rZ = spine.z - 0.5 + 3.2 * fProg;
+          col = colorsList.plasmaMagenta.map((c, idx) => c * 0.5 + colorsList.supernovaPink[idx] * 0.5);
+        }
+        energy = 0.9;
+        glow = 0.8;
       }
 
     } else if (type === 6) {
-      // --- EYES (Glowing spheres) ---
+      // --- EYES (Glowing blue/white spheres) ---
+      const spine = getSpinePoint(0.0);
       const side = Math.random() > 0.5 ? 1 : -1;
-      const eyePos = { x: side * 0.48, y: 0.55, z: -1.7 };
+      const eyePos = { x: spine.x + side * 0.48, y: spine.y + 0.55, z: spine.z - 1.7 };
       const pt = randomInSphere(0.12);
+      
       rX = eyePos.x + pt.x;
       rY = eyePos.y + pt.y;
       rZ = eyePos.z + pt.z;
       progress = 0.0;
-      col = colorsList.starlightWhite;
+      col = [0.8, 0.98, 1.0]; // Bright white-blue starlight core
       energy = 1.0;
       glow = 1.0;
 
     } else if (type === 2) {
-      // --- HORNS (Branching deer antlers) ---
-      // Curves back, then splits into two sharp tines
-      const hornSide = Math.random() > 0.5 ? 1 : -1;
-      const tineType = Math.random() > 0.4 ? 0 : 1; // 0 = main tine, 1 = sub tine
-      const hProg = Math.random();
+      // --- ANTLER HORNS (Branching structures with volume) ---
+      const side = Math.random() > 0.5 ? 1 : -1;
+      const hProg = Math.random(); // antler strand progress
       progress = hProg;
 
-      const base: [number, number, number] = [hornSide * 0.42, 0.75, -0.6];
+      const spine = getSpinePoint(0.0);
+      const base: [number, number, number] = [spine.x + side * 0.44, spine.y + 0.72, spine.z - 0.5];
       
-      if (tineType === 0) {
-        // Main antler curves back and up
-        const target: [number, number, number] = [hornSide * 1.8, 2.6, 2.0];
-        const mid: [number, number, number] = [hornSide * 0.9, 1.6, 0.6];
+      // Determine if particle is on main stem or branching tines
+      const branchPart = Math.random();
+      let thickness = 0.18;
+
+      if (branchPart < 0.55) {
+        // A. Main stem (thick Bezier curves going upward/backward)
+        const p0 = base;
+        const p1: [number, number, number] = [spine.x + side * 1.2, spine.y + 2.0, spine.z + 0.8];
+        const p2: [number, number, number] = [spine.x + side * 2.2, spine.y + 3.4, spine.z + 2.2];
         
-        // Quadratic bezier
         const mt = hProg;
-        rX = (1-mt)*(1-mt)*base[0] + 2*(1-mt)*mt*mid[0] + mt*mt*target[0];
-        rY = (1-mt)*(1-mt)*base[1] + 2*(1-mt)*mt*mid[1] + mt*mt*target[1];
-        rZ = (1-mt)*(1-mt)*base[2] + 2*(1-mt)*mt*mid[2] + mt*mt*target[2];
-      } else {
-        // Sub branch antler forks off halfway
-        const mid: [number, number, number] = [hornSide * 0.9, 1.6, 0.6]; // start at split point
-        const target: [number, number, number] = [hornSide * 2.2, 1.8, 1.1]; // forks outward
+        rX = (1 - mt) * (1 - mt) * p0[0] + 2 * (1 - mt) * mt * p1[0] + mt * mt * p2[0];
+        rY = (1 - mt) * (1 - mt) * p0[1] + 2 * (1 - mt) * mt * p1[1] + mt * mt * p2[1];
+        rZ = (1 - mt) * (1 - mt) * p0[2] + 2 * (1 - mt) * mt * p1[2] + mt * mt * p2[2];
         
-        const pt = sampleLine(mid, target);
-        rX = pt.x;
-        rY = pt.y;
-        rZ = pt.z;
+        thickness = 0.22 * (1.0 - mt * 0.85);
+      } else if (branchPart < 0.80) {
+        // B. Tine 1 (lower antler fork splitting at t = 0.4, pointing forward)
+        const mt = 0.4;
+        const p0: [number, number, number] = [
+          (1-mt)*(1-mt)*base[0] + 2*(1-mt)*mt*(spine.x + side * 1.2) + mt*mt*(spine.x + side * 2.2),
+          (1-mt)*(1-mt)*base[1] + 2*(1-mt)*mt*(spine.y + 2.0) + mt*mt*(spine.y + 3.4),
+          (1-mt)*(1-mt)*base[2] + 2*(1-mt)*mt*(spine.z + 0.8) + mt*mt*(spine.z + 2.2)
+        ];
+        const p2: [number, number, number] = [spine.x + side * 1.72, spine.y + 2.62, spine.z + 0.38];
+        
+        const pt = sampleLine(p0, p2);
+        rX = pt.x; rY = pt.y; rZ = pt.z;
+        thickness = 0.12 * (1.0 - pt.progress * 0.8);
+      } else {
+        // C. Tine 2 (upper antler fork splitting at t = 0.7, pointing outward)
+        const mt = 0.7;
+        const p0: [number, number, number] = [
+          (1-mt)*(1-mt)*base[0] + 2*(1-mt)*mt*(spine.x + side * 1.2) + mt*mt*(spine.x + side * 2.2),
+          (1-mt)*(1-mt)*base[1] + 2*(1-mt)*mt*(spine.y + 2.0) + mt*mt*(spine.y + 3.4),
+          (1-mt)*(1-mt)*base[2] + 2*(1-mt)*mt*(spine.z + 0.8) + mt*mt*(spine.z + 2.2)
+        ];
+        const p2: [number, number, number] = [spine.x + side * 2.65, spine.y + 3.02, spine.z + 1.45];
+        
+        const pt = sampleLine(p0, p2);
+        rX = pt.x; rY = pt.y; rZ = pt.z;
+        thickness = 0.10 * (1.0 - pt.progress * 0.8);
       }
       
-      // Small horn thickness taper
-      const pt = randomInSphere(0.12 * (1.0 - hProg * 0.6));
-      rX += pt.x;
-      rY += pt.y;
-      rZ += pt.z;
+      // Distribute volumetrically around the antler lines
+      const theta = Math.random() * 2.0 * Math.PI;
+      const rad = Math.sqrt(Math.random()) * thickness;
+      rX += Math.cos(theta) * rad;
+      rY += Math.sin(theta) * rad;
+      rZ += (Math.random() - 0.5) * thickness * 0.3;
       
       col = colorsList.electricBlue.map((c, idx) => c * (1 - hProg) + colorsList.starlightWhite[idx] * hProg);
-      energy = 0.8;
-      glow = 0.65;
+      energy = 0.85;
+      glow = 0.7;
 
     } else if (type === 3) {
-      // --- WHISKERS (Long flowing snout trails) ---
+      // --- WHISKERS (Volumetric flowing tentacles) ---
       const whiskerSide = Math.random() > 0.5 ? 1 : -1;
       const whiskerPair = Math.random() > 0.5 ? 0 : 1;
       const wProgress = Math.random();
       progress = wProgress;
       
-      const startX = whiskerSide * 0.28;
-      const startY = whiskerPair === 0 ? 0.05 : -0.25;
-      const startZ = -2.9;
+      const spine = getSpinePoint(0.0);
+      const startX = spine.x + whiskerSide * 0.32;
+      const startY = spine.y - 0.08 + (whiskerPair === 0 ? 0.08 : -0.16);
+      const startZ = spine.z - 2.58;
       
-      const spread = whiskerPair === 0 ? 3.6 : 2.5;
-      const drop = whiskerPair === 0 ? -1.8 : -2.6;
+      const spread = whiskerPair === 0 ? 3.82 : 2.58;
+      const drop = whiskerPair === 0 ? -1.65 : -2.45;
       
-      rX = startX + whiskerSide * (spread * wProgress * wProgress + Math.sin(wProgress * 5.0) * 0.2);
-      rY = startY + drop * wProgress + Math.cos(wProgress * 3.0) * 0.15;
-      rZ = startZ + 6.0 * wProgress;
+      // Coherent flow path
+      rX = startX + whiskerSide * (spread * wProgress * wProgress + Math.sin(wProgress * 4.0) * 0.28);
+      rY = startY + drop * wProgress + Math.cos(wProgress * 3.0) * 0.18;
+      rZ = startZ + 7.6 * wProgress;
       
-      const pt = randomInSphere(0.04);
-      rX += pt.x;
-      rY += pt.y;
-      rZ += pt.z;
+      // Add fine volume tapering
+      const thickness = 0.08 * (1.0 - wProgress * 0.82);
+      const theta = Math.random() * 2.0 * Math.PI;
+      const rad = Math.sqrt(Math.random()) * thickness;
+      rX += Math.cos(theta) * rad;
+      rY += Math.sin(theta) * rad;
       
       col = colorsList.galaxyCyan;
       energy = 0.95;
       glow = 0.8;
 
     } else if (type === 4) {
-      // --- BACK SCALES (60+ Sharp triangular dorsal fin plates) ---
-      // We distribute particles along the edges of triangular scales along the back Z=2 to Z=30
-      const numScales = 75;
-      const scaleId = Math.floor(Math.random() * numScales);
-      const scaleProgress = scaleId / numScales; // progress along body
+      // --- DORSAL COMB / BACK SCALES (Continuous webbed ridge along spine) ---
+      // Sample continuously along the back
+      const t = 0.05 + Math.random() * 0.87;
+      progress = t;
       
-      const zScale = 2.0 + scaleProgress * 28.0; // scale Z anchor
+      const frame = getSpineFrame(t);
+      const bodyRadius = 1.62 * (1.0 - t * 0.82);
       
-      // Spine base coordinate
-      const spineX = Math.sin(zScale * 0.25) * 1.8;
-      const spineY = Math.cos(zScale * 0.16) * 1.2;
-      const radius = 1.5 * (1.0 - (zScale / bodyLength) * 0.93);
+      // Spike comb height - modulated by high-frequency absolute sine wave
+      const numSpikes = 70;
+      const spikeFactor = Math.abs(Math.sin(t * Math.PI * numSpikes));
+      const sHeight = (1.45 * (1.0 - t * 0.65)) * spikeFactor;
       
-      const sHeight = 1.2 * (1.0 - scaleProgress * 0.6); // scale height tapers
+      // Sample volumetric point inside the triangular spike
+      const hProg = Math.random(); // height progress
+      const spikeW = 0.18 * (1.0 - t * 0.5) * (1.0 - hProg); // width decreases to tip
       
-      // Define triangle vertices
-      const pBaseFront: [number, number, number] = [spineX, spineY + radius, zScale];
-      const pPeak: [number, number, number] = [spineX, spineY + radius + sHeight, zScale + 0.15];
-      const pBaseBack: [number, number, number] = [spineX, spineY + radius, zScale + 0.35];
+      // Center coordinates along spike height
+      const ptX = frame.origin.x + frame.normal.x * (bodyRadius + sHeight * hProg);
+      const ptY = frame.origin.y + frame.normal.y * (bodyRadius + sHeight * hProg);
+      const ptZ = frame.origin.z + frame.normal.z * (bodyRadius + sHeight * hProg);
       
-      // Pick a random edge of the triangle to distribute particles along (creates sharp edge lines!)
-      const edge = Math.floor(Math.random() * 3);
-      let pt;
-      if (edge === 0) {
-        pt = sampleLine(pBaseFront, pPeak, 0.015);
-      } else if (edge === 1) {
-        pt = sampleLine(pPeak, pBaseBack, 0.015);
-      } else {
-        pt = sampleLine(pBaseBack, pBaseFront, 0.015);
-      }
+      // Displace along spine binormal for spike width
+      const sideDisp = (Math.random() - 0.5) * 2.0 * spikeW;
+      rX = ptX + frame.binormal.x * sideDisp;
+      rY = ptY + frame.binormal.y * sideDisp;
+      rZ = ptZ + frame.binormal.z * sideDisp;
       
-      rX = pt.x;
-      rY = pt.y;
-      rZ = pt.z;
-      progress = scaleProgress; // waves in sync with spine
+      rX += (Math.random() - 0.5) * 0.02;
+      rY += (Math.random() - 0.5) * 0.02;
+      rZ += (Math.random() - 0.5) * 0.02;
       
-      col = colorsList.plasmaMagenta.map((c, idx) => c * (1 - scaleProgress) + colorsList.supernovaPink[idx] * scaleProgress);
-      energy = 0.8;
-      glow = 0.7;
+      col = colorsList.plasmaMagenta.map((c, idx) => c * (1 - t) + colorsList.supernovaPink[idx] * t);
+      energy = 0.85;
+      glow = 0.75;
 
     } else if (type === 7) {
-      // --- LEGS & CLAWS (4 detailed limbs with sharp toes) ---
-      // Legs placed at Z = 6.5 (front legs) and Z = 22.0 (back legs)
-      const isFront = Math.random() < 0.5;
+      // --- LIMBS: LEGS & CLAWS (4 volumetric limbs with sharp grasp talons) ---
       const side = Math.random() > 0.5 ? 1 : -1;
-      const zAnchor = isFront ? 6.5 : 22.0;
+      const isFront = Math.random() < 0.5;
+      const tAnchor = isFront ? 0.20 : 0.72; // Shoulder vs Hip anchor progress
+      progress = tAnchor;
       
-      const spineX = Math.sin(zAnchor * 0.25) * 1.8;
-      const spineY = Math.cos(zAnchor * 0.16) * 1.2;
-      const radius = 1.5 * (1.0 - (zAnchor / bodyLength) * 0.93);
+      const frame = getSpineFrame(tAnchor);
+      const bodyRadius = 1.62 * (1.0 - tAnchor * 0.82);
       
-      // Leg joints
-      const pShoulder: [number, number, number] = [spineX + side * radius, spineY - 0.2, zAnchor];
-      const pKnee: [number, number, number] = [spineX + side * (radius + 1.6), spineY - 1.2, zAnchor - 0.4];
-      const pAnkle: [number, number, number] = [spineX + side * (radius + 1.2), spineY - 2.4, zAnchor - 0.8];
+      // 1. Joint Coordinate calculation
+      const pShoulder: [number, number, number] = [
+        frame.origin.x + frame.binormal.x * side * bodyRadius,
+        frame.origin.y - 0.28,
+        frame.origin.z
+      ];
       
-      const member = Math.random();
-      progress = zAnchor / bodyLength; // Wave in sync with their attachment point
+      const pKnee: [number, number, number] = [
+        pShoulder[0] + side * 1.65,
+        pShoulder[1] - 1.45,
+        pShoulder[2] - 0.32
+      ];
+      
+      const pAnkle: [number, number, number] = [
+        pKnee[0] - side * 0.32,
+        pKnee[1] - 1.35,
+        pKnee[2] - 0.48
+      ];
+      
+      const legPart = Math.random(); // Distribute particles inside leg segments
 
-      if (member < 0.25) {
-        // Upper leg (Shoulder to Knee)
-        const pt = sampleLine(pShoulder, pKnee, 0.06);
-        rX = pt.x; rY = pt.y; rZ = pt.z;
+      if (legPart < 0.30) {
+        // A. Upper limb tube (Shoulder/Thigh)
+        const pt = sampleLine(pShoulder, pKnee, 0.02);
+        const thickness = 0.44 * (1.0 - pt.progress * 0.3); // Tapering
+        const theta = Math.random() * 2.0 * Math.PI;
+        const rad = Math.sqrt(Math.random()) * thickness;
+        rX = pt.x + Math.cos(theta) * rad;
+        rY = pt.y + Math.sin(theta) * rad;
+        rZ = pt.z + (Math.random() - 0.5) * thickness * 0.25;
         col = colorsList.nebulaPurple;
-      } else if (member < 0.5) {
-        // Lower leg (Knee to Ankle)
-        const pt = sampleLine(pKnee, pAnkle, 0.05);
-        rX = pt.x; rY = pt.y; rZ = pt.z;
+        energy = 0.6;
+        glow = 0.5;
+      } else if (legPart < 0.60) {
+        // B. Lower limb tube (Shin/Forearm)
+        const pt = sampleLine(pKnee, pAnkle, 0.02);
+        const thickness = 0.32 * (1.0 - pt.progress * 0.3);
+        const theta = Math.random() * 2.0 * Math.PI;
+        const rad = Math.sqrt(Math.random()) * thickness;
+        rX = pt.x + Math.cos(theta) * rad;
+        rY = pt.y + Math.sin(theta) * rad;
+        rZ = pt.z + (Math.random() - 0.5) * thickness * 0.25;
         col = colorsList.electricBlue;
+        energy = 0.7;
+        glow = 0.6;
       } else {
-        // Sharp Claws! 4 claws extending from the ankle.
-        // We define claw tip targets
+        // C. Sharp Claws/Talons (4 detailed curved cones)
         const clawId = Math.floor(Math.random() * 4);
-        
         let clawOffset = [0, 0, 0];
-        if (clawId === 0) clawOffset = [side * 0.6, -0.4, -0.6];       // outer toe
-        else if (clawId === 1) clawOffset = [side * 0.1, -0.5, -0.8];  // center toe
-        else if (clawId === 2) clawOffset = [side * -0.4, -0.4, -0.6]; // inner toe
-        else clawOffset = [side * 0.1, -0.2, 0.5];                    // back spur
+        if (clawId === 0) clawOffset = [side * 0.68, -0.58, -0.78];      // Front-outer toe
+        else if (clawId === 1) clawOffset = [side * 0.12, -0.78, -1.02];  // Front-center toe
+        else if (clawId === 2) clawOffset = [side * -0.48, -0.58, -0.78]; // Front-inner toe
+        else clawOffset = [side * 0.12, -0.22, 0.58];                    // Back spur toe
         
         const pClawTip: [number, number, number] = [
           pAnkle[0] + clawOffset[0],
@@ -457,50 +629,61 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
           pAnkle[2] + clawOffset[2]
         ];
         
-        // Distribute particles tightly along the claw line for sharp spikes
-        const pt = sampleLine(pAnkle, pClawTip, 0.012);
-        rX = pt.x;
-        rY = pt.y;
+        const pt = sampleLine(pAnkle, pClawTip, 0.008);
+        const thickness = 0.14 * (1.0 - pt.progress); // Sharp tip taper
+        const theta = Math.random() * 2.0 * Math.PI;
+        const rad = Math.sqrt(Math.random()) * thickness;
+        rX = pt.x + Math.cos(theta) * rad;
+        rY = pt.y + Math.sin(theta) * rad;
         rZ = pt.z;
         
-        // Claws have glowing starlight tips
-        col = colorsList.electricBlue.map((c, idx) => c * (1 - pt.progress) + colorsList.starlightWhite[idx] * pt.progress);
-        glow = 0.9;
-        energy = 0.9;
+        col = colorsList.electricBlue.map((c, idx) => c * (1.0 - pt.progress) + colorsList.starlightWhite[idx] * pt.progress);
+        glow = 0.95;
+        energy = 0.95;
       }
 
     } else if (type === 8) {
-      // --- WINGS (Type 8) ---
+      // --- COSMIC WINGS (Flying pose stardust wings with thickness) ---
       const wingSide = Math.random() > 0.5 ? 1 : -1;
-      const wProgress = Math.random(); // from shoulder to tip
+      const wProgress = Math.random();
       progress = wProgress;
       
-      const zAnchor = 6.5;
-      const spineX = Math.sin(zAnchor * 0.25) * 1.8;
-      const spineY = Math.cos(zAnchor * 0.16) * 1.2;
-      const radius = 1.5 * (1.0 - (zAnchor / bodyLength) * 0.93);
+      const zAnchor = 6.4; // shoulder attachment Z
+      const frame = getSpineFrame(zAnchor / bodyLength);
+      const bodyRadius = 1.62 * (1.0 - (zAnchor / bodyLength) * 0.82);
       
-      const pShoulder: [number, number, number] = [spineX + wingSide * radius, spineY + 0.3, zAnchor];
+      const pShoulder: [number, number, number] = [
+        frame.origin.x + frame.binormal.x * wingSide * bodyRadius,
+        frame.origin.y + 0.32,
+        frame.origin.z
+      ];
       
-      // Wing tips extending back, outward and upward/downward (matching flying pose bat structure)
-      const pTip1: [number, number, number] = [spineX + wingSide * 9.5, spineY + 5.2, zAnchor - 1.2]; // Top tip
-      const pTip2: [number, number, number] = [spineX + wingSide * 11.5, spineY + 2.0, zAnchor + 1.8]; // Mid tip
-      const pTip3: [number, number, number] = [spineX + wingSide * 8.5, spineY - 1.2, zAnchor + 4.2]; // Bottom tip
+      // Wing bone tips (matching bat-like wing structures)
+      const pTip1: [number, number, number] = [frame.origin.x + wingSide * 9.5, frame.origin.y + 5.2, zAnchor - 1.2]; // Top spar tip
+      const pTip2: [number, number, number] = [frame.origin.x + wingSide * 11.5, frame.origin.y + 2.0, zAnchor + 1.8]; // Mid spar tip
+      const pTip3: [number, number, number] = [frame.origin.x + wingSide * 8.5, frame.origin.y - 1.2, zAnchor + 4.2]; // Bottom spar tip
       
-      const isBone = Math.random() < 0.25;
+      const isBone = Math.random() < 0.24;
       
       if (isBone) {
-        // Wing spars (bones)
+        // Volumetric bone spars (starlight white/electric blue)
         const sparId = Math.floor(Math.random() * 3);
         const tip = sparId === 0 ? pTip1 : sparId === 1 ? pTip2 : pTip3;
-        const pt = sampleLine(pShoulder, tip, 0.05);
-        rX = pt.x; rY = pt.y; rZ = pt.z;
+        const pt = sampleLine(pShoulder, tip, 0.02);
+        
+        const thickness = 0.28 * (1.0 - pt.progress * 0.72);
+        const theta = Math.random() * 2.0 * Math.PI;
+        const rad = Math.sqrt(Math.random()) * thickness;
+        
+        rX = pt.x + Math.cos(theta) * rad;
+        rY = pt.y + Math.sin(theta) * rad;
+        rZ = pt.z + (Math.random() - 0.5) * thickness * 0.28;
         
         col = colorsList.electricBlue.map((c, idx) => c * (1 - wProgress) + colorsList.starlightWhite[idx] * wProgress);
         energy = 0.9;
         glow = 0.8;
       } else {
-        // Wing membrane (translucent stardust web)
+        // Volumetric membrane stardust web
         const webId = Math.floor(Math.random() * 2);
         const t1 = Math.random();
         const t2 = Math.random();
@@ -520,8 +703,11 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
         ];
         
         const weight = Math.random();
-        const pt = sampleLine(pA as [number, number, number], pB as [number, number, number], 0.15);
-        rX = pt.x; rY = pt.y; rZ = pt.z;
+        const pt = sampleLine(pA as [number, number, number], pB as [number, number, number], 0.045);
+        
+        rX = pt.x;
+        rY = pt.y;
+        rZ = pt.z + (Math.random() - 0.5) * 0.12; // Web thickness
         
         col = colorsList.nebulaPurple.map((c, idx) => c * (1 - weight) + colorsList.plasmaMagenta[idx] * weight);
         energy = 0.5;
@@ -529,31 +715,41 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
       }
 
     } else if (type === 5) {
-      // --- TAIL ---
-      const tz = 32.0 + Math.random() * 4.5;
-      const tProgress = (tz - 32.0) / 4.5;
+      // --- TAIL PLUME (Flowing flame-like ribbons) ---
+      const tz = 32.0 + Math.random() * 5.0; // tail length 5 units
+      const tProgress = (tz - 32.0) / 5.0;
       progress = tProgress;
       
-      const spineX = Math.sin(32.0 * 0.25) * 1.8;
-      const spineY = Math.cos(32.0 * 0.16) * 1.2;
+      const spine = getSpinePoint(32.0 / bodyLength);
       
-      const fanAngle = Math.random() * 2 * Math.PI;
-      const fanRadius = 0.1 + 3.2 * tProgress * (0.3 + 0.7 * Math.random());
+      // Generate 6 distinct waving ribbons
+      const ribbonId = Math.floor(Math.random() * 6);
+      const angle = (ribbonId / 6.0) * 2.0 * Math.PI;
       
-      rX = spineX + Math.cos(fanAngle) * fanRadius;
-      rY = spineY + Math.sin(fanAngle) * fanRadius;
+      const flareRadius = 0.32 + 3.4 * tProgress * (0.4 + 0.6 * Math.sin(tProgress * Math.PI));
+      const radThickness = 0.24 * (1.0 - tProgress * 0.68);
+      
+      const rAngle = angle + Math.sin(tProgress * 5.0) * 0.35;
+      const targetX = spine.x + Math.cos(rAngle) * flareRadius;
+      const targetY = spine.y + Math.sin(rAngle) * flareRadius;
+      
+      const theta = Math.random() * 2.0 * Math.PI;
+      const rad = Math.sqrt(Math.random()) * radThickness;
+      
+      rX = targetX + Math.cos(theta) * rad;
+      rY = targetY + Math.sin(theta) * rad;
       rZ = tz;
       
       col = colorsList.supernovaPink.map((c, idx) => c * (1 - tProgress) + colorsList.galaxyCyan[idx] * tProgress);
-      energy = 0.85;
-      glow = 0.8;
+      energy = 0.9;
+      glow = 0.85;
     }
 
     targetPositions[i * 3] = rX;
     targetPositions[i * 3 + 1] = rY;
     targetPositions[i * 3 + 2] = rZ;
 
-    // 3. GENERATE LOGO TARGET POSITIONS
+    // 3. LOGO TARGET GEOMETRY
     const letterIdx = i % letterOffsets.length;
     const letterChar = letterKeys[letterIdx];
     const letterOffset = letterOffsets[letterIdx];
@@ -567,7 +763,7 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
     logoPositions[i * 3 + 1] = logoPt.y + noiseY;
     logoPositions[i * 3 + 2] = thickZ;
 
-    // 4. MAP ATTRIBUTES
+    // 4. ATTRIBUTE MAP
     colors[i * 3] = col[0];
     colors[i * 3 + 1] = col[1];
     colors[i * 3 + 2] = col[2];
@@ -585,10 +781,10 @@ export function generateCosmicDragonParticles(count: number): CosmicParticlesDat
   return {
     positions,
     targetPositions,
-    logoPositions,
     colors,
     randoms,
     velocities,
     extras,
+    logoPositions
   };
 }

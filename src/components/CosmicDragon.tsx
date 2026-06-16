@@ -1,7 +1,6 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { generateCosmicDragonParticles } from '../utils/dragonGenerator';
 import { particleVertexShader, particleFragmentShader } from '../shaders/particleShaders';
 
@@ -32,7 +31,6 @@ export const animState = {
 
 export function CosmicDragon() {
   const pointsRef = useRef<THREE.Points>(null);
-  const geometryRef = useRef<THREE.BufferGeometry>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const { size } = useThree();
 
@@ -82,114 +80,7 @@ export function CosmicDragon() {
     return geom;
   }, [particleData]);
 
-  // 3. LOAD HIGH-DETAIL GLTF MESH & EXTRACT SURFACE VERTICES
-  useEffect(() => {
-    const loader = new GLTFLoader();
-    
-    loader.load(
-      '/dragon.glb',
-      (gltf) => {
-        console.log('Successfully loaded reference dragon model:', gltf);
-        
-        const meshes: THREE.Mesh[] = [];
-        gltf.scene.traverse((node: any) => {
-          if (node.isMesh) {
-            meshes.push(node);
-          }
-        });
 
-        if (meshes.length === 0) {
-          console.warn('No meshes found in the loaded GLTF model.');
-          return;
-        }
-
-        // Extract all mesh vertices transformed to world space
-        const vertices: number[] = [];
-        meshes.forEach((mesh) => {
-          const positionAttr = mesh.geometry.attributes.position;
-          if (positionAttr) {
-            mesh.updateMatrixWorld(true);
-            const tempV = new THREE.Vector3();
-            for (let k = 0; k < positionAttr.count; k++) {
-              tempV.fromBufferAttribute(positionAttr, k);
-              tempV.applyMatrix4(mesh.matrixWorld);
-              vertices.push(tempV.x, tempV.y, tempV.z);
-            }
-          }
-        });
-
-        const vertexCount = vertices.length / 3;
-        console.log(`Extracted ${vertexCount} raw vertices from GLTF.`);
-
-        if (vertexCount === 0) return;
-
-        // Compute Bounding Box to center and scale the model
-        const bbox = new THREE.Box3();
-        const tempV = new THREE.Vector3();
-        for (let k = 0; k < vertexCount; k++) {
-          tempV.set(vertices[k * 3], vertices[k * 3 + 1], vertices[k * 3 + 2]);
-          bbox.expandByPoint(tempV);
-        }
-
-        const center = new THREE.Vector3();
-        bbox.getCenter(center);
-        
-        const boxSize = new THREE.Vector3();
-        bbox.getSize(boxSize);
-        
-        const maxDim = Math.max(boxSize.x, boxSize.y, boxSize.z);
-        // Scale target to fit a 32-unit length space aligned along the Z-axis
-        const targetScale = 32.0 / maxDim;
-
-        // Center, scale, and rotate model so it aligns along the serpentine Z-axis
-        const rotatedVertices = new Float32Array(vertexCount * 3);
-        for (let k = 0; k < vertexCount; k++) {
-          // Center & scale
-          let x = (vertices[k * 3] - center.x) * targetScale;
-          let y = (vertices[k * 3 + 1] - center.y) * targetScale;
-          let z = (vertices[k * 3 + 2] - center.z) * targetScale;
-
-          // Rotate the model 90 degrees around Y axis if needed so it lies along Z
-          // We align the depth length of the model with the screen depth
-          const tempX = z;
-          const tempZ = -x;
-          
-          rotatedVertices[k * 3] = tempX;
-          // Offset Y up slightly so it doesn't clip floor limits
-          rotatedVertices[k * 3 + 1] = y + 1.5;
-          // Offset Z so it starts at 0 and goes back along the spine
-          rotatedVertices[k * 3 + 2] = tempZ + 16.0;
-        }
-
-        // Map these world vertices onto our particleCount target buffer
-        const newTargets = new Float32Array(particleCount * 3);
-        const jitter = 0.04;
-        
-        for (let k = 0; k < particleCount; k++) {
-          const vIdx = k % vertexCount;
-          newTargets[k * 3] = rotatedVertices[vIdx * 3] + (Math.random() - 0.5) * jitter;
-          newTargets[k * 3 + 1] = rotatedVertices[vIdx * 3 + 1] + (Math.random() - 0.5) * jitter;
-          newTargets[k * 3 + 2] = rotatedVertices[vIdx * 3 + 2] + (Math.random() - 0.5) * jitter;
-        }
-
-        // Dynamically update the BufferAttribute on the GPU
-        if (geometryRef.current) {
-          const targetAttribute = geometryRef.current.getAttribute('aTargetPosition') as THREE.BufferAttribute;
-          if (targetAttribute) {
-            targetAttribute.copyArray(newTargets);
-            targetAttribute.needsUpdate = true;
-            console.log('GPU target positions updated with model geometry.');
-          }
-        }
-      },
-      (xhr) => {
-        console.log(`Loading GLTF model: ${(xhr.loaded / xhr.total) * 100}% loaded`);
-      },
-      (error) => {
-        console.error('An error occurred loading the GLTF model. Using mathematical fallback.', error);
-      }
-    );
-  }, [particleCount]);
 
   // 4. SHADER MATERIAL UNIFORMS
   const uniforms = useMemo(() => {
@@ -285,7 +176,7 @@ export function CosmicDragon() {
   });
 
   return (
-    <points ref={pointsRef} geometry={geometry} ref-geometry={geometryRef}>
+    <points ref={pointsRef} geometry={geometry}>
       <shaderMaterial
         ref={materialRef}
         vertexShader={particleVertexShader}
