@@ -138,7 +138,7 @@ export const particleVertexShader = `
 
     if (vType == 7.0 || vType == 8.0) {
       // Legs (Type 7) and Wings (Type 8) wave in sync with their shoulder/hip spine anchors
-      float anchorZ = aRandom.z * 32.0;
+      float anchorZ = (vType == 8.0) ? 6.4 : aRandom.z * 32.0;
       float anchorPhase = (anchorZ * 0.16) - waveTime;
       float anchorAmp = anchorZ / 32.0;
       waveX = sin(anchorPhase) * uSwimAmplitude * anchorAmp;
